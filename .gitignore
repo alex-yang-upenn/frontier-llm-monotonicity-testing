@@ -1,0 +1,15 @@
+latex/
+results/
+
+**/.env
+
+**/*venv/
+__pycache__/
+.pytest_cache/
+
+*.pdf
+*.zip
+*.tar.gz
+
+.vscode/
+.DS_Store
