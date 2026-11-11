@@ -23,8 +23,8 @@ RESULTS_DIRECTORY = Path(__file__).resolve().parent / "results"
 
 # Epsilon parameter. Edge tester catches screeners at least this far from monotone (with probability >= 1 - 1/e).
 DISTANCE_THRESHOLD = 0.05
-# Delta parameter of Fattal-Ron, estimate is within this additive error, like a +-5% survey margin of error.
-ADDITIVE_ERROR = 0.05
+# Delta parameter of Fattal-Ron, estimate is within this additive error, like a +-10% survey margin of error.
+ADDITIVE_ERROR = 0.1
 # Fattal-Ron checks 2^SUBCUBE_DIMENSION resumes per sample.
 SUBCUBE_DIMENSION = 2
 
@@ -48,33 +48,38 @@ def main() -> None:
     )
     random_generator = random.Random(RANDOM_SEED)
 
-    test_result = EdgeTester().run_test(
-        screener_accepts, arguments.dimension, DISTANCE_THRESHOLD, random_generator
-    )
-    distance_estimate = FattalRonEstimator(
-        subcube_dimension=SUBCUBE_DIMENSION
-    ).estimate_distance(
-        screener_accepts, arguments.dimension, ADDITIVE_ERROR, random_generator
-    )
-
-    results = json.dumps(
-        {
-            "arguments": vars(arguments),
-            "stretch_skill_names": [
-                skill.name for skill in skills_catalog.stretch_skills
-            ],
-            "test_result": test_result.model_dump(mode="json"),
-            "distance_estimate": distance_estimate.model_dump(mode="json"),
-            "api_call_count": len(screening_client.cost_ledger.api_calls),
-            "cost": screening_client.cost_ledger.model_dump(
-                mode="json", exclude={"api_calls"}
-            ),
-        },
-        indent=2,
-    )
-    print(results)
     RESULTS_DIRECTORY.mkdir(exist_ok=True)
-    (RESULTS_DIRECTORY / f"run_{datetime.now():%Y%m%d_%H%M%S}.json").write_text(results)
+    results_path = RESULTS_DIRECTORY / f"run_{datetime.now():%Y%m%d_%H%M%S}.json"
+    results: dict = {"arguments": vars(arguments)}
+
+    results["test_result"] = (
+        EdgeTester()
+        .run_test(
+            screener_accepts,
+            arguments.dimension,
+            DISTANCE_THRESHOLD,
+            random_generator,
+            screening_client.cost_ledger,
+        )
+        .model_dump(mode="json")
+    )
+    print(json.dumps(results["test_result"], indent=2))
+    results_path.write_text(json.dumps(results, indent=2))
+
+    results["distance_estimate"] = (
+        FattalRonEstimator(subcube_dimension=SUBCUBE_DIMENSION)
+        .estimate_distance(
+            screener_accepts,
+            arguments.dimension,
+            ADDITIVE_ERROR,
+            random_generator,
+            screening_client.cost_ledger,
+        )
+        .model_dump(mode="json")
+    )
+    print(json.dumps(results["distance_estimate"], indent=2))
+    results_path.write_text(json.dumps(results, indent=2))
+    print(f"Saved to {results_path}")
 
 
 if __name__ == "__main__":

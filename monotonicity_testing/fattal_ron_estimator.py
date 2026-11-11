@@ -3,17 +3,18 @@
 Points of the hypercube are int bitmasks: bit i is coordinate i.
 
 Split the coordinates into consecutive blocks of `subcube_dimension` coordinates (the last
-block may be shorter). Repeat `sample_count` times: pick a random block, fix every other
-coordinate at random, and compute the exact distance to monotonicity of the function on
-that small subcube. Return the mean of those distances minus a small bias correction.
+block may be shorter).Repeat `sample_count` times:
+ - pick a random block, fix every other coordinate at random
+ - compute the exact distance to monotonicity of the function on that small subcube
+ - return the mean of those distances minus a small bias correction.
 
 Guarantee (Lemma 3.2 with Lemma 3.1), with probability >= 2/3:
     true_distance / (2 * block_count) - additive_error <= estimate <= true_distance.
 
-The paper's constants are used as is: ceil(18 / additive_error^2) samples, and a bias
+We use the paper's constants: ceil(18 / additive_error^2) samples, and a bias
 correction of additive_error / 3. Subcube distances are computed exactly (`exact_distance.py`).
 
-Each sample costs up to 2^subcube_dimension queries; the full dimension can be large.
+Each sample costs up to 2^subcube_dimension queries
 """
 
 from __future__ import annotations
@@ -30,7 +31,9 @@ from pydantic import (
     computed_field,
     validate_call,
 )
+from tqdm import tqdm
 
+from .token_pricing import CostLedger
 from .fattal_ron_subcube_exact_distance import exact_distance_to_monotonicity
 
 UnitIntervalFloat = Annotated[float, Field(gt=0, le=1)]
@@ -50,6 +53,9 @@ class DistanceEstimate(BaseModel):
     additive_error: float
     sample_count: int
     mean_subcube_distance: float
+    elapsed_seconds: float
+    seconds_per_sample: float
+    cost: CostLedger | None
 
     @computed_field
     @property
@@ -79,10 +85,13 @@ class FattalRonEstimator(BaseModel):
         dimension: int,
         additive_error: float,
         random_generator: random.Random,
+        cost_ledger: CostLedger | None = None,
     ) -> DistanceEstimate:
         sample_count = self.sample_count(additive_error)
         sum_of_subcube_distances = 0.0
-        for _ in range(sample_count):
+        first_call_index = len(cost_ledger.api_calls) if cost_ledger else 0
+        progress_bar = tqdm(range(sample_count), desc="Fattal-Ron estimator")
+        for _ in progress_bar:
             # Randomly choose a subcube of dimension `subcube_dimension`
             block_start = random_generator.randrange(
                 0, dimension, self.subcube_dimension
@@ -100,6 +109,7 @@ class FattalRonEstimator(BaseModel):
             sum_of_subcube_distances += exact_distance_to_monotonicity(
                 restricted_function, block_size
             )
+        elapsed_seconds = progress_bar.format_dict["elapsed"]
         mean_subcube_distance = sum_of_subcube_distances / sample_count
 
         return DistanceEstimate(
@@ -109,4 +119,7 @@ class FattalRonEstimator(BaseModel):
             additive_error=additive_error,
             sample_count=sample_count,
             mean_subcube_distance=mean_subcube_distance,
+            elapsed_seconds=elapsed_seconds,
+            seconds_per_sample=elapsed_seconds / sample_count,
+            cost=cost_ledger.calls_since(first_call_index) if cost_ledger else None,
         )

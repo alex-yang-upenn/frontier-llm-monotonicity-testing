@@ -2,8 +2,8 @@
 
 Fattal & Ron, Lemma 2.1: the distance equals (minimum vertex cover of the violation graph) / 2^dimension,
 where the violation graph joins every pair lower_point < upper_point with f(lower_point) = 1 and
-f(upper_point) = 0. That graph is bipartite (lower points, where f = 1, vs upper points, where f = 0), so by Konig's theorem the
-minimum vertex cover has the size of a maximum matching, which we find with augmenting paths.
+f(upper_point) = 0. That graph is bipartite (lower points, where f = 1, vs upper points, where f = 0), so
+by Konig's theorem the minimum vertex cover has the size of a maximum matching, which we find with augmenting paths.
 """
 
 from __future__ import annotations

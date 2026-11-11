@@ -1,16 +1,4 @@
-"""The LLM hiring screener: (job posting, skills section) -> accept or reject.
-
-Talks to the Azure OpenAI v1 endpoint through the plain `openai.OpenAI` client and the
-Responses API, with the reply parsed into a typed Pydantic model.
-
-gpt-6.1-sol is a reasoning model: it rejects `temperature`, and its lowest reasoning
-effort is "low". Reasoning tokens are billed as output tokens.
-
-Prompt caching: the developer message (instructions + full job posting) is identical in
-every call and ends in an explicit cache breakpoint, so only the skills section is billed
-at the full input rate. The prefix must be at least 1024 tokens to be cached. Changing the
-deployment or the reasoning effort starts a new cache.
-"""
+"""The LLM hiring screener: (job posting, skills section) -> accept or reject."""
 
 from __future__ import annotations
 

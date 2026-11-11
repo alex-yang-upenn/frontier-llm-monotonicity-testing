@@ -1,13 +1,16 @@
-"""Token accounting and dollar cost of the LLM calls.
-
-Every input token is billed as exactly one of: uncached, cache read, or cache write.
-Output tokens include the model's hidden reasoning tokens.
-"""
+"""Token accounting and dollar cost of the LLM calls."""
 
 from __future__ import annotations
 
 from openai.types.responses import ResponseUsage
-from pydantic import BaseModel, ConfigDict, Field, NonNegativeFloat, NonNegativeInt, computed_field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    NonNegativeFloat,
+    NonNegativeInt,
+    computed_field,
+)
 
 TOKENS_PER_MILLION = 1_000_000
 
@@ -22,7 +25,7 @@ class TokenPricing(BaseModel):
 
 
 # GPT-6.1 Sol (short context), Global deployment, from https://azure.microsoft.com/pricing/details/azure-openai/
-# (retrieved 2026-11-11). Our prompts (job posting + skills section) are well within short context.
+# Our prompts (job posting + skills section) are well within short context.
 GPT_6_1_SOL_PRICING = TokenPricing(
     input_usd_per_million_tokens=2.00,
     cache_read_usd_per_million_tokens=0.10,
@@ -73,7 +76,17 @@ class CostLedger(BaseModel):
     """Usage of every API call."""
 
     pricing: TokenPricing
-    api_calls: list[CallTokenUsage] = Field(default_factory=list)
+    api_calls: list[CallTokenUsage] = Field(default_factory=list, exclude=True)
+    """Not serialized: one entry per call is too long for result files."""
+
+    @computed_field
+    @property
+    def api_call_count(self) -> int:
+        return len(self.api_calls)
+
+    def calls_since(self, start_index: int) -> CostLedger:
+        """A ledger of only the calls made after the first `start_index` calls."""
+        return CostLedger(pricing=self.pricing, api_calls=self.api_calls[start_index:])
 
     @computed_field
     @property
@@ -83,4 +96,6 @@ class CostLedger(BaseModel):
     @computed_field
     @property
     def cost_without_caching_usd(self) -> float:
-        return sum(call.cost_without_caching_usd(self.pricing) for call in self.api_calls)
+        return sum(
+            call.cost_without_caching_usd(self.pricing) for call in self.api_calls
+        )

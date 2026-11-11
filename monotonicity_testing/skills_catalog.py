@@ -28,7 +28,6 @@ class StretchSkill(BaseModel):
 
 
 class SkillsCatalog(BaseModel):
-    """Stretch skills are ordered from most to least relevant to the job posting."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -41,12 +40,24 @@ class SkillsCatalog(BaseModel):
         cls, path: Path = DEFAULT_SKILLS_PATH, dimension: NonNegativeInt = 35
     ) -> SkillsCatalog:
         catalog = cls.model_validate_json(path.read_text(encoding="utf-8"))
-        return catalog.model_copy(update={"stretch_skills": catalog.stretch_skills[:dimension]})
+        return catalog.model_copy(
+            update={"stretch_skills": catalog.stretch_skills[:dimension]}
+        )
 
     def render_skills_section(self, point: int) -> str:
-        included_skills = [skill for index, skill in enumerate(self.stretch_skills) if point >> index & 1]
+        included_skills = [
+            skill
+            for index, skill in enumerate(self.stretch_skills)
+            if point >> index & 1
+        ]
         lines = [self.section_heading]
         for category in self.categories:
-            extra_skill_names = [skill.name for skill in included_skills if skill.category_name == category.name]
-            lines.append(f"{category.name}: {', '.join(category.baseline_skills + extra_skill_names)}")
+            extra_skill_names = [
+                skill.name
+                for skill in included_skills
+                if skill.category_name == category.name
+            ]
+            lines.append(
+                f"{category.name}: {', '.join(category.baseline_skills + extra_skill_names)}"
+            )
         return "\n".join(lines)

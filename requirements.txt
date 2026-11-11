@@ -4,3 +4,4 @@ pydantic
 pypdf
 pymupdf
 pytest
+tqdm
