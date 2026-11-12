@@ -15,6 +15,7 @@ from monotonicity_testing.edge_tester import EdgeTester
 from monotonicity_testing.fattal_ron_estimator import FattalRonEstimator
 from monotonicity_testing.screening_client import (
     DEFAULT_DEPLOYMENT_NAME,
+    DEFAULT_WORKER_THREAD_COUNT,
     LLMResumeScreener,
 )
 from monotonicity_testing.skills_catalog import SkillsCatalog
@@ -23,8 +24,8 @@ RESULTS_DIRECTORY = Path(__file__).resolve().parent / "results"
 
 # Epsilon parameter. Edge tester catches screeners at least this far from monotone (with probability >= 1 - 1/e).
 DISTANCE_THRESHOLD = 0.05
-# Delta parameter of Fattal-Ron, estimate is within this additive error, like a +-10% survey margin of error.
-ADDITIVE_ERROR = 0.1
+# Delta parameter of Fattal-Ron, estimate is within this additive error, like a +-20% survey margin of error.
+ADDITIVE_ERROR = 0.2
 # Fattal-Ron checks 2^SUBCUBE_DIMENSION resumes per sample.
 SUBCUBE_DIMENSION = 2
 
@@ -39,13 +40,21 @@ def main() -> None:
         "--dimension", type=int, default=35, help="dimension n of the boolean hypercube"
     )
     parser.add_argument("--deployment-name", default=DEFAULT_DEPLOYMENT_NAME)
+    parser.add_argument(
+        "--worker-threads",
+        type=int,
+        default=DEFAULT_WORKER_THREAD_COUNT,
+        help="number of concurrent LLM API calls",
+    )
     arguments = parser.parse_args()
 
     skills_catalog = SkillsCatalog.load_from_file(dimension=arguments.dimension)
-    screening_client = LLMResumeScreener(deployment_name=arguments.deployment_name)
-    screener_accepts = screening_client.as_boolean_function(
-        skills_catalog.render_skills_section
+    screening_client = LLMResumeScreener(
+        skills_catalog,
+        deployment_name=arguments.deployment_name,
+        worker_thread_count=arguments.worker_threads,
     )
+    screener_accepts = screening_client.accepts
     random_generator = random.Random(RANDOM_SEED)
 
     RESULTS_DIRECTORY.mkdir(exist_ok=True)

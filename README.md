@@ -40,24 +40,9 @@ python run_experiment.py  # calls the LLM (costs money), prints and saves result
 |---|---|---|
 | `--dimension` | Dimension n of the boolean hypercube, i.e. the number of stretch skills (takes the first n, most relevant first) | all 35 |
 | `--deployment-name` | Azure OpenAI deployment to query | `gpt-6.1-sol` |
-
-**Code layout**
-
-| File | What it holds |
-|---|---|
-| `run_experiment.py` | Command-line entry point; wires everything together |
-| `monotonicity_testing/edge_tester.py` | Goldreich et al. edge tester and its result |
-| `monotonicity_testing/fattal_ron_estimator.py` | Fattal & Ron distance estimator and its result |
-| `monotonicity_testing/exact_distance.py` | Exact distance of a subcube restriction (used by Fattal–Ron) |
-| `monotonicity_testing/screening_client.py` | The LLM screener (Azure OpenAI, prompt caching; remembers answers so no resume is paid for twice) |
-| `monotonicity_testing/token_pricing.py` | Token counts and dollar cost |
-| `monotonicity_testing/skills_catalog.py` | Turns a bit string into a resume skills section |
-| `data/` | The job posting, the skills list, and where both came from |
-
+| `--worker-threads` | Number of LLM API calls made concurrently | 4 |
 
 ---
-
-
 
 ## References
 

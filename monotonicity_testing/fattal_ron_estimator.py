@@ -14,13 +14,16 @@ Guarantee (Lemma 3.2 with Lemma 3.1), with probability >= 2/3:
 We use the paper's constants: ceil(18 / additive_error^2) samples, and a bias
 correction of additive_error / 3. Subcube distances are computed exactly (`exact_distance.py`).
 
-Each sample costs up to 2^subcube_dimension queries
+Each sample costs up to 2^subcube_dimension queries. All subcubes are drawn first and every point of every subcube
+is queried in one concurrent batch; the exact distances are then computed from those answers.
 """
 
 from __future__ import annotations
 
 import math
 import random
+import time
+from collections.abc import Sequence
 from typing import Annotated, Callable
 
 from pydantic import (
@@ -31,8 +34,6 @@ from pydantic import (
     computed_field,
     validate_call,
 )
-from tqdm import tqdm
-
 from .token_pricing import CostLedger
 from .fattal_ron_subcube_exact_distance import exact_distance_to_monotonicity
 
@@ -53,9 +54,14 @@ class DistanceEstimate(BaseModel):
     additive_error: float
     sample_count: int
     mean_subcube_distance: float
-    elapsed_seconds: float
-    seconds_per_sample: float
+    total_wall_clock_seconds: float
     cost: CostLedger | None
+
+    @computed_field
+    @property
+    def seconds_per_sample(self) -> float | None:
+        """Total compute time of this run's API calls / sample_count, if a ledger was given."""
+        return self.cost.total_compute_seconds / self.sample_count if self.cost else None
 
     @computed_field
     @property
@@ -81,17 +87,16 @@ class FattalRonEstimator(BaseModel):
 
     def estimate_distance(
         self,
-        boolean_function: Callable[[int], bool],
+        boolean_function: Callable[[Sequence[int]], list[bool]],
         dimension: int,
         additive_error: float,
         random_generator: random.Random,
         cost_ledger: CostLedger | None = None,
     ) -> DistanceEstimate:
         sample_count = self.sample_count(additive_error)
-        sum_of_subcube_distances = 0.0
-        first_call_index = len(cost_ledger.api_calls) if cost_ledger else 0
-        progress_bar = tqdm(range(sample_count), desc="Fattal-Ron estimator")
-        for _ in progress_bar:
+        # Generate subcubes, described by (fixed_bits, block_start, block_size)
+        subcubes: list[tuple[int, int, int]] = []
+        for _ in range(sample_count):
             # Randomly choose a subcube of dimension `subcube_dimension`
             block_start = random_generator.randrange(
                 0, dimension, self.subcube_dimension
@@ -102,14 +107,29 @@ class FattalRonEstimator(BaseModel):
             # Randomly fix the other coordinates of the hypercube
             fixed_bits = random_generator.getrandbits(dimension) & ~block_bits
 
+            subcubes.append((fixed_bits, block_start, block_size))
+
+        # Pre-compute all the points of all sampled subcubes and query the boolean function on them in one batch.
+        first_call_index = len(cost_ledger.api_calls) if cost_ledger else 0
+        start_seconds = time.perf_counter()
+        points = [
+            fixed_bits | subcube_point << block_start
+            for fixed_bits, block_start, block_size in subcubes
+            for subcube_point in range(2**block_size)
+        ]
+        value_by_point = dict(zip(points, boolean_function(points)))
+
+        sum_of_subcube_distances = 0.0
+        for fixed_bits, block_start, block_size in subcubes:
             # Create a boolean function on the subcube where the block's coordinates vary and the rest stay fixed.
-            restricted_function = lambda subcube_point: boolean_function(
+            # Uses the pre-computed lookup table, rather than calling the boolean function again.
+            restricted_function = lambda subcube_point: value_by_point[
                 fixed_bits | subcube_point << block_start
-            )
+            ]
             sum_of_subcube_distances += exact_distance_to_monotonicity(
                 restricted_function, block_size
             )
-        elapsed_seconds = progress_bar.format_dict["elapsed"]
+        total_wall_clock_seconds = time.perf_counter() - start_seconds
         mean_subcube_distance = sum_of_subcube_distances / sample_count
 
         return DistanceEstimate(
@@ -119,7 +139,6 @@ class FattalRonEstimator(BaseModel):
             additive_error=additive_error,
             sample_count=sample_count,
             mean_subcube_distance=mean_subcube_distance,
-            elapsed_seconds=elapsed_seconds,
-            seconds_per_sample=elapsed_seconds / sample_count,
+            total_wall_clock_seconds=total_wall_clock_seconds,
             cost=cost_ledger.calls_since(first_call_index) if cost_ledger else None,
         )

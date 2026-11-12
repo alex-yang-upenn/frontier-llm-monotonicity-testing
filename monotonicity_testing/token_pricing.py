@@ -42,15 +42,20 @@ class CallTokenUsage(BaseModel):
     cache_write_tokens: NonNegativeInt
     output_tokens: NonNegativeInt
     reasoning_tokens: NonNegativeInt
+    compute_seconds: NonNegativeFloat
+    """Time the call took, measured by the thread that made it (includes retries)."""
 
     @classmethod
-    def from_response_usage(cls, usage: ResponseUsage) -> CallTokenUsage:
+    def from_response_usage(
+        cls, usage: ResponseUsage, compute_seconds: float
+    ) -> CallTokenUsage:
         return cls(
             input_tokens=usage.input_tokens,
             cache_read_tokens=usage.input_tokens_details.cached_tokens,
             cache_write_tokens=usage.input_tokens_details.cache_write_tokens,
             output_tokens=usage.output_tokens,
             reasoning_tokens=usage.output_tokens_details.reasoning_tokens,
+            compute_seconds=compute_seconds,
         )
 
     @property
@@ -92,6 +97,12 @@ class CostLedger(BaseModel):
     @property
     def total_cost_usd(self) -> float:
         return sum(call.cost_usd(self.pricing) for call in self.api_calls)
+
+    @computed_field
+    @property
+    def total_compute_seconds(self) -> float:
+        """Sum of every call's own duration; unlike wall clock time, unaffected by running calls concurrently."""
+        return sum(call.compute_seconds for call in self.api_calls)
 
     @computed_field
     @property
